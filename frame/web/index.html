@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frame preview</title>
+  <style>
+    :root { color-scheme: dark; --fade: 0.85s; --kb: 8s; }
+    html, body { margin: 0; height: 100%; background: #0c0c0c; overflow: hidden; font-family: ui-sans-serif, system-ui, sans-serif; }
+    #stage { position: fixed; inset: 0; overflow: hidden; background: #0c0c0c; }
+    .layer {
+      position: absolute;
+      inset: -10%;
+      width: 120%;
+      height: 120%;
+      object-fit: cover;
+      opacity: 0;
+      filter: blur(18px);
+      transition: opacity var(--fade) ease, filter var(--fade) ease;
+      transform-origin: center;
+    }
+    .layer.show { opacity: 1; filter: blur(0); }
+    .layer.ken-a { animation: kenA var(--kb) ease-in-out alternate infinite; }
+    .layer.ken-b { animation: kenB var(--kb) ease-in-out alternate infinite; }
+    video.layer { background: #0c0c0c; }
+    #stage.playing .layer {
+      animation: none;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      filter: none;
+    }
+    #stage.portrait .layer { object-fit: contain; inset: 0; width: 100%; height: 100%; }
+    @keyframes kenA {
+      from { transform: scale(1) translate(0, 0); }
+      to { transform: scale(1.1) translate(-2.4%, 1.6%); }
+    }
+    @keyframes kenB {
+      from { transform: scale(1.08) translate(2%, -1%); }
+      to { transform: scale(1) translate(0, 0); }
+    }
+    #presence {
+      position: fixed;
+      inset: 8px;
+      pointer-events: none;
+      border: 3px solid transparent;
+      border-radius: 16px;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      box-shadow: inset 0 0 0 0 rgba(255, 214, 140, 0);
+    }
+    #presence.on {
+      opacity: 1;
+      border-color: rgba(255, 224, 170, 0.55);
+      animation: presencePulse 1.5s ease-in-out infinite;
+    }
+    @keyframes presencePulse {
+      0%, 100% {
+        border-color: rgba(255, 224, 170, 0.32);
+        box-shadow: inset 0 0 28px 6px rgba(255, 210, 130, 0.10), 0 0 18px 2px rgba(255, 210, 130, 0.16);
+      }
+      50% {
+        border-color: rgba(255, 236, 198, 0.95);
+        box-shadow: inset 0 0 52px 14px rgba(255, 214, 140, 0.26), 0 0 28px 6px rgba(255, 220, 160, 0.32);
+      }
+    }
+    #cue {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.18s ease;
+    }
+    #cue.show { opacity: 1; }
+    #cue .mark {
+      color: rgba(255, 255, 255, 0.72);
+      text-shadow: 0 4px 28px rgba(0, 0, 0, 0.55);
+      font-weight: 300;
+      letter-spacing: 0.04em;
+      user-select: none;
+    }
+    #cue.swipe_left { justify-content: flex-start; padding-left: 7vw; }
+    #cue.swipe_right { justify-content: flex-end; padding-right: 7vw; }
+    #cue.swipe_left .mark,
+    #cue.swipe_right .mark { font-size: min(18vw, 38vh); line-height: 1; }
+    #cue.play .mark,
+    #cue.pause .mark { font-size: min(14vw, 32vh); line-height: 1; }
+    #hud {
+      position: fixed;
+      top: 18px;
+      left: 24px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      text-shadow: 0 1px 8px #000;
+    }
+    #title { font-size: 22px; font-weight: 600; }
+    #meta { font-size: 12px; color: #c8c8c8; text-align: right; line-height: 1.45; }
+    #badge {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 8px;
+      border: 1px solid #666;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    #badge.on { border-color: #8f8; color: #b8f8b8; }
+    #badge.armed { border-color: #fc6; color: #ffe0a8; }
+    #badge.playing { border-color: #8cf; color: #cfefff; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <img id="a" class="layer" alt="">
+    <img id="b" class="layer" alt="">
+    <video id="motion" class="layer" muted playsinline></video>
+  </div>
+  <div id="presence"></div>
+  <div id="cue"><span class="mark"></span></div>
+  <div id="hud">
+    <div>
+      <div id="title">Loading</div>
+      <div id="badge">sensor</div>
+    </div>
+    <div id="meta"></div>
+  </div>
+  <script>
+    const stage = document.getElementById("stage");
+    const presence = document.getElementById("presence");
+    const cue = document.getElementById("cue");
+    const cueMark = cue.querySelector(".mark");
+    const layers = [document.getElementById("a"), document.getElementById("b")];
+    const video = document.getElementById("motion");
+    const title = document.getElementById("title");
+    const meta = document.getElementById("meta");
+    const badge = document.getElementById("badge");
+    const marks = { swipe_left: "‹‹", swipe_right: "››", play: "▶", pause: "❚❚" };
+    let front = 0;
+    let seen = "";
+    let seenCue = -1;
+    let cueTimer = 0;
+
+    video.addEventListener("ended", () => command("stop"));
+
+    async function poll() {
+      const state = await (await fetch("/api/state")).json();
+      const key = state.index + ":" + state.playing + ":" + state.generation + ":" + state.motion_type;
+      if (key !== seen) {
+        seen = key;
+        show(state);
+      }
+      if (state.cue_id !== seenCue) {
+        seenCue = state.cue_id;
+        flashCue(state.cue);
+      }
+      title.textContent = state.title;
+      stage.classList.toggle("playing", state.playing);
+      stage.classList.toggle("portrait", state.orientation === "portrait");
+      presence.classList.toggle("on", !!state.armed);
+      badge.textContent = state.playing ? state.kind + " playing" : state.armed ? "armed" : state.sensor;
+      badge.classList.remove("on", "armed", "playing");
+      if (state.playing) badge.classList.add("playing");
+      else if (state.armed) badge.classList.add("armed");
+      else if (state.sensor === "connected") badge.classList.add("on");
+      const motion = state.playable ? state.kind : "still";
+      meta.innerHTML =
+        (state.index + 1) + " / " + state.total + " · " + motion + "<br>" +
+        (state.playing ? "playing" : "ken burns") + " · " + state.last_command + "<br>" +
+        (state.source ? state.source.split("/").pop() : "library");
+    }
+
+    function flashCue(kind) {
+      if (!kind || !marks[kind]) return;
+      cue.className = "";
+      cue.classList.add(kind, "show");
+      cueMark.textContent = marks[kind];
+      clearTimeout(cueTimer);
+      cueTimer = setTimeout(() => cue.classList.remove("show"), 900);
+    }
+
+    function show(state) {
+      if (state.playing && state.motion_type === "video" && state.motion_src) {
+        layers.forEach((layer) => layer.classList.remove("show"));
+        video.classList.add("show");
+        video.loop = state.kind === "live";
+        if (video.dataset.src !== state.motion_src) {
+          video.dataset.src = state.motion_src;
+          video.src = state.motion_src;
+        }
+        video.play().catch(() => {});
+        return;
+      }
+      video.pause();
+      video.classList.remove("show");
+      if (!state.playing) {
+        video.removeAttribute("src");
+        delete video.dataset.src;
+      }
+      const src = state.playing && state.motion_src ? state.motion_src : state.still_src;
+      if (!src) return;
+      const incoming = layers[1 - front];
+      const outgoing = layers[front];
+      incoming.onload = () => {
+        incoming.classList.add("show");
+        outgoing.classList.remove("show");
+        front = 1 - front;
+      };
+      incoming.classList.remove("ken-a", "ken-b");
+      if (!state.playing) incoming.classList.add(state.index % 2 === 0 ? "ken-a" : "ken-b");
+      incoming.src = src + "?g=" + Date.now();
+    }
+
+    async function command(action) {
+      await fetch("/api/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      await poll();
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") command("next");
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") command("previous");
+      if (event.key === "Escape") command("stop");
+      if (event.key === " " || event.key === "p") {
+        event.preventDefault();
+        command("play");
+      }
+    });
+
+    poll();
+    setInterval(poll, 120);
+  </script>
+</body>
+</html>
