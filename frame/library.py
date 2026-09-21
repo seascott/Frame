@@ -92,10 +92,7 @@ def has_embedded_motion(path: Path) -> bool:
     except OSError:
         return False
     blob = head + tail
-    return any(
-        marker in blob
-        for marker in (b"MicroVideo", b"MotionPhoto", b"motionphoto", b"GCamera")
-    )
+    return any(marker in blob for marker in (b"MicroVideo", b"MotionPhoto", b"motionphoto"))
 
 
 def _iter_media_files(root: Path) -> list[Path]:
@@ -111,8 +108,14 @@ def _iter_media_files(root: Path) -> list[Path]:
                 continue
             path = current / name
             suffix = path.suffix.lower()
-            if suffix in PHOTO_SUFFIXES or suffix in GIF_SUFFIXES or suffix in VIDEO_SUFFIXES:
-                found.append(path)
+            if suffix not in PHOTO_SUFFIXES and suffix not in GIF_SUFFIXES and suffix not in VIDEO_SUFFIXES:
+                continue
+            try:
+                if path.stat().st_size == 0:
+                    continue
+            except OSError:
+                continue
+            found.append(path)
     return found
 
 

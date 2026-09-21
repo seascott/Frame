@@ -13,7 +13,7 @@ from PIL import Image
 
 from frame.library import MediaAsset
 from frame.player import Slide
-from frame.schema import KIND_GIF, STILL_WEB_SUFFIXES
+from frame.schema import KIND_GIF, KIND_LIVE, KIND_PHOTO, STILL_WEB_SUFFIXES
 
 LOGGER = logging.getLogger(__name__)
 
@@ -44,13 +44,17 @@ def prepare_slide(asset: MediaAsset, cache_dir: Path) -> Slide | None:
         LOGGER.warning("skip %s: no display still", asset.title)
         return None
     motion = _ensure_motion(asset, cache_dir, token)
+    kind = asset.kind
+    if kind == KIND_LIVE and motion is None:
+        LOGGER.warning("%s: no motion clip, showing as photo", asset.title)
+        kind = KIND_PHOTO
     orientation = _orientation(still)
     return Slide(
         still=still,
         motion=motion,
         title=asset.title,
         orientation=orientation,
-        kind=asset.kind,
+        kind=kind,
         token=token,
     )
 
@@ -72,8 +76,11 @@ def extract_embedded_motion(source: Path, dest: Path) -> bool:
             offset = len(data) - (idx - 4)
     if offset is None or offset < 16 or offset >= len(data):
         return False
-    dest.write_bytes(data[-offset:])
-    return dest.stat().st_size >= 16
+    clip = data[-offset:]
+    if b"ftyp" not in clip[:64]:
+        return False
+    dest.write_bytes(clip)
+    return True
 
 
 def _ensure_still(asset: MediaAsset, cache_dir: Path, token: str) -> Path | None:
@@ -168,12 +175,19 @@ def _placeholder_still(dest: Path, title: str) -> Path:
     return dest
 
 
+EXIF_ORIENTATION_TAG = 0x0112
+EXIF_ROTATED_90 = {5, 6, 7, 8}
+
+
 def _orientation(path: Path) -> str:
     try:
         with Image.open(path) as image:
             width, height = image.size
+            exif_orientation = image.getexif().get(EXIF_ORIENTATION_TAG)
     except OSError:
         return "landscape"
+    if exif_orientation in EXIF_ROTATED_90:
+        width, height = height, width
     return "portrait" if height > width else "landscape"
 
 

@@ -121,9 +121,13 @@ def make_handler(show: Slideshow) -> type[BaseHTTPRequestHandler]:
             if urlparse(self.path).path != "/api/command":
                 self.send_error(404)
                 return
-            length = int(self.headers.get("Content-Length", "0"))
-            payload = json.loads(self.rfile.read(length) or b"{}")
-            action = payload.get("action")
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                self.send_error(400)
+                return
+            action = payload.get("action") if isinstance(payload, dict) else None
             if action == "next":
                 show.next("keyboard")
             elif action == "previous":
@@ -172,16 +176,15 @@ def make_handler(show: Slideshow) -> type[BaseHTTPRequestHandler]:
             end = file_size - 1
             status = 200
             range_header = self.headers.get("Range") if allow_range else None
-            if range_header and range_header.startswith("bytes=") and file_size:
-                spec = range_header.split("=", 1)[1].split(",", 1)[0]
-                first, _, last = spec.partition("-")
-                if first:
-                    start = max(0, int(first))
-                if last:
-                    end = min(file_size - 1, int(last))
-                if start > end:
-                    self.send_error(416)
+            if range_header and file_size:
+                byte_range = _parse_range(range_header, file_size)
+                if byte_range is None:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{file_size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
                     return
+                start, end = byte_range
                 status = 206
             length = end - start + 1
             self.send_response(status)
@@ -206,6 +209,28 @@ def make_handler(show: Slideshow) -> type[BaseHTTPRequestHandler]:
                     remaining -= len(chunk)
 
     return Handler
+
+
+def _parse_range(header: str, file_size: int) -> tuple[int, int] | None:
+    """Parse a single `bytes=first-last` range; None means unsatisfiable or malformed."""
+    if not header.startswith("bytes="):
+        return None
+    spec = header[len("bytes=") :].split(",", 1)[0].strip()
+    first, dash, last = spec.partition("-")
+    if not dash or (first and not first.isdigit()) or (last and not last.isdigit()):
+        return None
+    if not first and not last:
+        return None
+    if not first:
+        suffix = min(int(last), file_size)
+        if suffix == 0:
+            return None
+        return file_size - suffix, file_size - 1
+    start = int(first)
+    end = min(file_size - 1, int(last)) if last else file_size - 1
+    if start >= file_size or start > end:
+        return None
+    return start, end
 
 
 def main(argv: list[str] | None = None) -> int:
