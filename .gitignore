@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.egg-info/
+.canvas.data.json
+assets/test/
+assets/demo/
+assets/cache/
