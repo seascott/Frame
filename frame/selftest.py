@@ -303,6 +303,83 @@ def test_scan_skips_cache_dir() -> None:
     assert [asset.title for asset in assets] == ["Keep"]
 
 
+def test_orientation_honors_exif_rotation() -> None:
+    import tempfile
+
+    from PIL import Image
+
+    from frame.derive import _orientation
+
+    root = Path(tempfile.mkdtemp())
+    rotated = root / "rotated.jpg"
+    plain = root / "plain.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    Image.new("RGB", (400, 300)).save(rotated, exif=exif)
+    Image.new("RGB", (400, 300)).save(plain)
+    assert _orientation(rotated) == "portrait"
+    assert _orientation(plain) == "landscape"
+
+
+def test_gcamera_marker_alone_is_not_motion() -> None:
+    import tempfile
+
+    from frame.library import has_embedded_motion
+
+    root = Path(tempfile.mkdtemp())
+    still = root / "PXL_0001.jpg"
+    still.write_bytes(b"\xff\xd8\xff\xe1<x:xmpmeta xmlns:GCamera='http://ns.google.com/photos/1.0/camera/'/>")
+    assert not has_embedded_motion(still)
+    motion = root / "PXL_0002.jpg"
+    motion.write_bytes(b"\xff\xd8\xff\xe1GCamera:MicroVideoOffset=\"12\"")
+    assert has_embedded_motion(motion)
+
+
+def test_failed_motion_extract_falls_back_to_photo() -> None:
+    import tempfile
+
+    from frame.derive import prepare_slide
+    from frame.library import MediaAsset
+
+    root = Path(tempfile.mkdtemp())
+    still = root / "fake-live.jpg"
+    from PIL import Image
+
+    Image.new("RGB", (64, 48)).save(still)
+    asset = MediaAsset(kind="live", title="Fake", still_source=still, motion_source=None, embedded_motion=True)
+    slide = prepare_slide(asset, root / ".frame-cache")
+    assert slide is not None
+    assert slide.kind == "photo"
+    assert not slide.playable
+
+
+def test_scan_skips_zero_byte_media() -> None:
+    import tempfile
+
+    from frame.library import scan_library
+
+    root = Path(tempfile.mkdtemp())
+    (root / "Live.JPG").write_bytes(b"jpg")
+    (root / "Live.MOV").write_bytes(b"")
+    (root / "Empty.mp4").write_bytes(b"")
+    assets = scan_library(root)
+    assert [(asset.kind, asset.title) for asset in assets] == [("photo", "Live")]
+
+
+def test_parse_range() -> None:
+    from frame.preview import _parse_range
+
+    assert _parse_range("bytes=0-99", 1000) == (0, 99)
+    assert _parse_range("bytes=900-", 1000) == (900, 999)
+    assert _parse_range("bytes=-100", 1000) == (900, 999)
+    assert _parse_range("bytes=0-5000", 1000) == (0, 999)
+    assert _parse_range("bytes=abc-", 1000) is None
+    assert _parse_range("bytes=-", 1000) is None
+    assert _parse_range("bytes=1000-", 1000) is None
+    assert _parse_range("bytes=50-10", 1000) is None
+    assert _parse_range("items=0-1", 1000) is None
+
+
 if __name__ == "__main__":
     test_parse_ascii_matrix()
     test_pop_usb_frames_lowercase_wrap()
@@ -321,4 +398,9 @@ if __name__ == "__main__":
     test_pair_live_photos_and_mixed_library()
     test_motion_photo_extract()
     test_scan_skips_cache_dir()
+    test_orientation_honors_exif_rotation()
+    test_gcamera_marker_alone_is_not_motion()
+    test_failed_motion_extract_falls_back_to_photo()
+    test_scan_skips_zero_byte_media()
+    test_parse_range()
     print("ok")

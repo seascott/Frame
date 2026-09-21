@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,6 +12,7 @@ from frame.test_images import TEST_IMAGE_DIR, ensure_test_images
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEMO_LIBRARY_DIR = REPO_ROOT / "assets" / "demo"
+LOGGER = logging.getLogger(__name__)
 
 
 def ensure_demo_library(directory: Path = DEMO_LIBRARY_DIR) -> Path:
@@ -47,14 +49,15 @@ def _copy(source: Path, dest: Path) -> None:
     shutil.copy2(source, dest)
 
 
-def _render_clip(still: Path, dest: Path, seconds: float) -> None:
+def _render_clip(still: Path, dest: Path, seconds: float) -> bool:
     if dest.exists() and dest.stat().st_size > 1000:
-        return
+        return True
+    dest.unlink(missing_ok=True)
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        dest.write_bytes(b"")
-        return
-    subprocess.run(
+        LOGGER.warning("ffmpeg not found; demo library will have no %s", dest.name)
+        return False
+    result = subprocess.run(
         [
             ffmpeg,
             "-y",
@@ -72,3 +75,8 @@ def _render_clip(still: Path, dest: Path, seconds: float) -> None:
         check=False,
         capture_output=True,
     )
+    if result.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
+        dest.unlink(missing_ok=True)
+        LOGGER.warning("ffmpeg failed to render %s", dest.name)
+        return False
+    return True
