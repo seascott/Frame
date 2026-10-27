@@ -12,7 +12,7 @@ from urllib.parse import unquote, urlparse
 from frame.constants import SLIDE_SECONDS
 from frame.demo_library import ensure_demo_library
 from frame.derive import build_slides
-from frame.gestures import GestureClassifier
+from frame.gestures import Gesture, GestureClassifier
 from frame.library import MediaAsset, scan_library
 from frame.player import Slideshow
 from frame.schema import KIND_GIF
@@ -124,14 +124,20 @@ def make_handler(show: Slideshow) -> type[BaseHTTPRequestHandler]:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
             action = payload.get("action")
-            if action == "next":
-                show.next("keyboard")
-            elif action == "previous":
-                show.previous("keyboard")
-            elif action == "play":
-                show.play("keyboard")
-            elif action == "stop":
-                show.stop("keyboard")
+            # Keyboard maps onto the SAME gesture pipeline the ToF sensor drives,
+            # so the preview validates real gesture behaviour (cues, play toggle).
+            gesture_for = {
+                "next": Gesture.SWIPE_LEFT,
+                "previous": Gesture.SWIPE_RIGHT,
+                "play": Gesture.PLAY,
+                "stop": Gesture.STOP,
+            }
+            if action in gesture_for:
+                show.apply_gesture(gesture_for[action])
+            elif action == "arm_toggle":
+                # Simulate a hand entering/leaving the control volume (no sensor).
+                show.set_armed(not show.armed)
+                show.set_sensor("connected" if show.armed else "disconnected")
             else:
                 self.send_error(400)
                 return
@@ -216,12 +222,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--discover", action="store_true", help="Use the first removable volume")
     parser.add_argument("--demo", action="store_true", help="Use the generated mixed demo library")
     parser.add_argument("--test-media", action="store_true", help="Use the original labeled test GIFs")
+    parser.add_argument("--test-library", action="store_true",
+                        help="Use the comprehensive labeled validation library (every capability)")
     parser.add_argument("--no-sensor", action="store_true")
     args = parser.parse_args(argv)
 
     root: Path | None = None
     if args.test_media:
         root = None
+    elif args.test_library:
+        from frame.test_library import ensure_test_library
+
+        root = ensure_test_library()
     elif args.library:
         root = Path(args.library).expanduser()
         if not root.is_dir():

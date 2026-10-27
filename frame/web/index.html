@@ -113,6 +113,34 @@
     #badge.on { border-color: #8f8; color: #b8f8b8; }
     #badge.armed { border-color: #fc6; color: #ffe0a8; }
     #badge.playing { border-color: #8cf; color: #cfefff; }
+    #help {
+      position: fixed;
+      left: 50%;
+      bottom: 7vh;
+      transform: translateX(-50%);
+      background: rgba(10, 10, 12, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      padding: 16px 22px;
+      color: #eee;
+      font-size: 15px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      max-width: 90vw;
+    }
+    #help.show { opacity: 1; }
+    #help h3 { margin: 0 0 10px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #9fb8a4; font-weight: 600; }
+    #help table { border-collapse: collapse; }
+    #help td { padding: 2px 12px 2px 0; white-space: nowrap; }
+    #help td.desc { color: #bdbdbd; }
+    #help td.desc span { color: #7d7d7d; }
+    #help kbd {
+      display: inline-block; min-width: 1.3em; text-align: center;
+      padding: 2px 8px; margin-right: 4px;
+      border: 1px solid #555; border-radius: 6px;
+      background: #1c1c20; font-family: ui-monospace, monospace; font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -129,6 +157,17 @@
       <div id="badge">sensor</div>
     </div>
     <div id="meta"></div>
+  </div>
+  <div id="help">
+    <h3>Frame controls &middot; keyboard stands in for the gesture sensor</h3>
+    <table>
+      <tr><td><kbd>&rarr;</kbd><kbd>&darr;</kbd></td><td class="desc">Next photo <span>&mdash; swipe-left gesture</span></td></tr>
+      <tr><td><kbd>&larr;</kbd><kbd>&uarr;</kbd></td><td class="desc">Previous photo <span>&mdash; swipe-right gesture</span></td></tr>
+      <tr><td><kbd>Space</kbd><kbd>P</kbd></td><td class="desc">Play / pause motion <span>&mdash; push gesture</span></td></tr>
+      <tr><td><kbd>Esc</kbd></td><td class="desc">Stop motion &rarr; Ken Burns <span>&mdash; withdraw gesture</span></td></tr>
+      <tr><td><kbd>A</kbd></td><td class="desc">Toggle presence <span>&mdash; simulate a hand</span></td></tr>
+      <tr><td><kbd>H</kbd><kbd>?</kbd></td><td class="desc">Show / hide this help</td></tr>
+    </table>
   </div>
   <script>
     const stage = document.getElementById("stage");
@@ -225,18 +264,40 @@
       await poll();
     }
 
+    const help = document.getElementById("help");
+    let helpTimer = 0;
+    function showHelp(persist) {
+      help.classList.add("show");
+      clearTimeout(helpTimer);
+      if (!persist) helpTimer = setTimeout(() => help.classList.remove("show"), 5000);
+    }
+    function toggleHelp() {
+      if (help.classList.contains("show")) {
+        clearTimeout(helpTimer);
+        help.classList.remove("show");
+      } else {
+        showHelp(true);
+      }
+    }
+
     document.addEventListener("keydown", (event) => {
       if (event.key === "ArrowRight" || event.key === "ArrowDown") command("next");
       if (event.key === "ArrowLeft" || event.key === "ArrowUp") command("previous");
       if (event.key === "Escape") command("stop");
-      if (event.key === " " || event.key === "p") {
+      if (event.key === " " || event.key === "p" || event.key === "P") {
         event.preventDefault();
         command("play");
+      }
+      if (event.key === "a" || event.key === "A") command("arm_toggle");
+      if (event.key === "h" || event.key === "H" || event.key === "?") {
+        event.preventDefault();
+        toggleHelp();
       }
     });
 
     poll();
     setInterval(poll, 120);
+    showHelp(false);
   </script>
 </body>
 </html>
