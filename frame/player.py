@@ -60,14 +60,20 @@ class Slideshow:
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
+            count = len(self.slides)
             slide = self.slides[self._index]
             remaining = max(0.0, self._deadline - time.monotonic())
             motion_type = slide.motion_type
             token = slide.token or str(self._index)
+            nxt = (self._index + 1) % count
+            prv = (self._index - 1) % count
             return {
                 "index": self._index,
-                "total": len(self.slides),
+                "total": count,
                 "still_src": f"/media/{token}/still",
+                # neighbor stills so the client can preload them -> instant swipes
+                "next_still": f"/media/{self.slides[nxt].token or str(nxt)}/still",
+                "prev_still": f"/media/{self.slides[prv].token or str(prv)}/still",
                 "motion_src": f"/media/{token}/motion" if slide.playable else "",
                 "motion_type": motion_type,
                 "title": slide.title,

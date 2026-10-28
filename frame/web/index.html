@@ -76,7 +76,7 @@
     }
     #cue.show { opacity: 1; }
     #cue .mark {
-      color: rgba(255, 255, 255, 0.72);
+      color: rgba(255, 255, 255, 0.5);
       text-shadow: 0 4px 28px rgba(0, 0, 0, 0.55);
       font-weight: 300;
       letter-spacing: 0.04em;
@@ -85,9 +85,9 @@
     #cue.swipe_left { justify-content: flex-start; padding-left: 7vw; }
     #cue.swipe_right { justify-content: flex-end; padding-right: 7vw; }
     #cue.swipe_left .mark,
-    #cue.swipe_right .mark { font-size: min(18vw, 38vh); line-height: 1; }
+    #cue.swipe_right .mark { font-size: min(9vw, 18vh); line-height: 1; }
     #cue.play .mark,
-    #cue.pause .mark { font-size: min(14vw, 32vh); line-height: 1; }
+    #cue.pause .mark { font-size: min(8vw, 16vh); line-height: 1; }
     #hud {
       position: fixed;
       top: 18px;
@@ -141,6 +141,50 @@
       border: 1px solid #555; border-radius: 6px;
       background: #1c1c20; font-family: ui-monospace, monospace; font-size: 13px;
     }
+    /* subtle "this one can play" affordance, bottom-right */
+    #playable {
+      position: fixed;
+      right: 22px;
+      bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 13px 5px 10px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.30);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      box-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      pointer-events: none;
+    }
+    #playable.show { opacity: 0.82; transform: translateY(0); }
+    #playable .ring {
+      width: 13px; height: 13px; border-radius: 50%;
+      border: 2px solid currentColor; position: relative;
+    }
+    #playable .ring::after {
+      content: ""; position: absolute; inset: 2.5px; border-radius: 50%;
+      background: currentColor;
+    }
+    #playable.live .ring { animation: ringPulse 2.6s ease-in-out infinite; }
+    @keyframes ringPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+      50% { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.14); }
+    }
+    #playable .tri {
+      width: 0; height: 0;
+      border-left: 10px solid currentColor;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+    }
   </style>
 </head>
 <body>
@@ -151,6 +195,7 @@
   </div>
   <div id="presence"></div>
   <div id="cue"><span class="mark"></span></div>
+  <div id="playable"></div>
   <div id="hud">
     <div>
       <div id="title">Loading</div>
@@ -179,6 +224,8 @@
     const title = document.getElementById("title");
     const meta = document.getElementById("meta");
     const badge = document.getElementById("badge");
+    const playable = document.getElementById("playable");
+    const preloaded = new Set();
     const marks = { swipe_left: "‹‹", swipe_right: "››", play: "▶", pause: "❚❚" };
     let front = 0;
     let seen = "";
@@ -212,6 +259,24 @@
         (state.index + 1) + " / " + state.total + " · " + motion + "<br>" +
         (state.playing ? "playing" : "ken burns") + " · " + state.last_command + "<br>" +
         (state.source ? state.source.split("/").pop() : "library");
+      updatePlayable(state);
+    }
+
+    // subtle corner badge: this still can spring to life (Live / video / GIF)
+    function updatePlayable(state) {
+      if (state.playable && !state.playing) {
+        if (playable.dataset.kind !== state.kind) {
+          playable.dataset.kind = state.kind;
+          playable.innerHTML =
+            state.kind === "live" ? '<span class="ring"></span>Live'
+            : state.kind === "video" ? '<span class="tri"></span>Play'
+            : '<span class="tri"></span>GIF';
+        }
+        playable.className = state.kind + " show";
+      } else {
+        playable.className = "";
+        playable.dataset.kind = "";
+      }
     }
 
     function flashCue(kind) {
@@ -220,7 +285,7 @@
       cue.classList.add(kind, "show");
       cueMark.textContent = marks[kind];
       clearTimeout(cueTimer);
-      cueTimer = setTimeout(() => cue.classList.remove("show"), 900);
+      cueTimer = setTimeout(() => cue.classList.remove("show"), 650);
     }
 
     function show(state) {
@@ -245,14 +310,30 @@
       if (!src) return;
       const incoming = layers[1 - front];
       const outgoing = layers[front];
-      incoming.onload = () => {
+      const reveal = () => {
         incoming.classList.add("show");
         outgoing.classList.remove("show");
         front = 1 - front;
       };
       incoming.classList.remove("ken-a", "ken-b");
       if (!state.playing) incoming.classList.add(state.index % 2 === 0 ? "ken-a" : "ken-b");
-      incoming.src = src + "?g=" + Date.now();
+      // No cache-buster: the browser caches media (max-age=3600), so revisiting a
+      // slide is instant. If the target image is already loaded, cross-fade now;
+      // otherwise fade in on load (fast, since neighbors are preloaded below).
+      if (incoming.getAttribute("src") === src && incoming.complete) {
+        reveal();
+      } else {
+        incoming.onload = reveal;
+        incoming.src = src;
+      }
+      // Preload the adjacent stills so a swipe either way is instant and seamless.
+      for (const url of [state.next_still, state.prev_still]) {
+        if (url && !preloaded.has(url)) {
+          preloaded.add(url);
+          const img = new Image();
+          img.src = url;
+        }
+      }
     }
 
     async function command(action) {
