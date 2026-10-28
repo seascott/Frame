@@ -4,6 +4,16 @@ Gesture-controlled digital photo frame: scan a folder of photos and videos, rend
 
 The Python package lives under `frame/`. Mac development uses the sensor’s USB-C CDC port; the same serial path is intended to work on a Raspberry Pi runtime later.
 
+## Stack
+
+- **Python 3** — package under `frame/`
+- **Pillow** — still derive, EXIF orientation, cache
+- **pyserial** — SEN0628 USB CDC stream
+- **ffmpeg** (optional, on `PATH`) — video transcode and some demo assets
+- **Static web UI** — `frame/web/` served by `preview.py`
+
+Agent conventions and the tiered review ladder: **`CLAUDE.md`**.
+
 ## Hardware and firmware
 
 - **Sensor:** DFRobot SEN0628 (8×8 ToF grid, RP2040 USB).
@@ -65,15 +75,15 @@ With background learning and a short presence arm time, in the control volume (~
 - **Push toward the sensor** — play motion (GIF/video/Live Photo)  
 - **Pull away** — pause / return to Ken Burns on the still  
 
-## Run the self-test
+## Test
 
-No hardware required:
+No hardware required. This is the default **prove** command for merges and regressions:
 
 ```bash
-python -m frame.selftest
+python3 -m frame.selftest
 ```
 
-Prints `ok` when all checks pass.
+Prints `ok` when all checks pass (matrix parsing, gestures, library pairing, derive edge cases).
 
 ## Run the preview
 
