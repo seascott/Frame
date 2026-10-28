@@ -203,6 +203,7 @@
     </div>
     <div id="meta"></div>
   </div>
+  <!-- dev-only control legend; shown only with ?dev -->
   <div id="help">
     <h3>Frame controls &middot; keyboard stands in for the gesture sensor</h3>
     <table>
@@ -345,40 +346,46 @@
       await poll();
     }
 
-    const help = document.getElementById("help");
-    let helpTimer = 0;
-    function showHelp(persist) {
-      help.classList.add("show");
-      clearTimeout(helpTimer);
-      if (!persist) helpTimer = setTimeout(() => help.classList.remove("show"), 5000);
-    }
-    function toggleHelp() {
-      if (help.classList.contains("show")) {
+    // The appliance is render-only: all input (the ToF sensor, and a server-side
+    // keyboard/rotary remote) is read on the device and drives /api/command. We
+    // attach NO keydown handler here by default, so there is no double-trigger if
+    // the kiosk window ever gains focus. A focused browser can still drive the
+    // controls for development via ?dev (in-page keyboard + on-screen legend).
+    if (new URLSearchParams(location.search).has("dev")) {
+      const help = document.getElementById("help");
+      let helpTimer = 0;
+      const showHelp = (persist) => {
+        help.classList.add("show");
         clearTimeout(helpTimer);
-        help.classList.remove("show");
-      } else {
-        showHelp(true);
-      }
+        if (!persist) helpTimer = setTimeout(() => help.classList.remove("show"), 5000);
+      };
+      const toggleHelp = () => {
+        if (help.classList.contains("show")) {
+          clearTimeout(helpTimer);
+          help.classList.remove("show");
+        } else {
+          showHelp(true);
+        }
+      };
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") command("next");
+        if (event.key === "ArrowLeft" || event.key === "ArrowUp") command("previous");
+        if (event.key === "Escape") command("stop");
+        if (event.key === " " || event.key === "p" || event.key === "P") {
+          event.preventDefault();
+          command("play");
+        }
+        if (event.key === "a" || event.key === "A") command("arm_toggle");
+        if (event.key === "h" || event.key === "H" || event.key === "?") {
+          event.preventDefault();
+          toggleHelp();
+        }
+      });
+      showHelp(false);
     }
-
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "ArrowRight" || event.key === "ArrowDown") command("next");
-      if (event.key === "ArrowLeft" || event.key === "ArrowUp") command("previous");
-      if (event.key === "Escape") command("stop");
-      if (event.key === " " || event.key === "p" || event.key === "P") {
-        event.preventDefault();
-        command("play");
-      }
-      if (event.key === "a" || event.key === "A") command("arm_toggle");
-      if (event.key === "h" || event.key === "H" || event.key === "?") {
-        event.preventDefault();
-        toggleHelp();
-      }
-    });
 
     poll();
     setInterval(poll, 120);
-    showHelp(false);
   </script>
 </body>
 </html>
