@@ -1,0 +1,55 @@
+"""Sensor and gesture constants. Shared by Mac USB breadboard and Pi runtime."""
+
+GRID_SIZE = 8
+ZONE_COUNT = GRID_SIZE * GRID_SIZE
+
+# SEN0628 USB CDC / UART
+BAUD_RATE = 115200
+USB_PORT_HINTS = (
+    "usbmodem",
+    "usbserial",
+    "wchusbserial",
+    "SLAB_USBtoUART",
+    "ttyACM",
+    "ttyUSB",
+)
+
+# Firmware v1.3 reports invalid ranges as 4000 mm.
+INVALID_DISTANCE_MM = 4000
+MIN_VALID_MM = 20
+MAX_VALID_MM = 3500
+
+# Interaction volume for a hand in the control area.
+HAND_MIN_MM = 160
+HAND_MAX_MM = 620
+MIN_HAND_ZONES = 5
+MAX_HAND_ZONES = 18
+HAND_MAX_XY_SPAN = 5
+HAND_MAX_Z_SPREAD_MM = 160
+FOREGROUND_DELTA_MM = 90
+BACKGROUND_LEARN_FRAMES = 16
+BACKGROUND_EMA = 0.08
+
+# Presence must settle before swipe/play are accepted.
+PRESENCE_ARM_SECONDS = 0.16
+PRESENCE_DROP_SECONDS = 0.22
+
+# Gesture timing
+HISTORY_SECONDS = 1.2
+SWIPE_MIN_CELLS = 1.8
+SWIPE_MAX_DEPTH_DELTA_MM = 260
+SWIPE_MIN_SECONDS = 0.10
+SWIPE_MAX_SECONDS = 0.75
+SWIPE_MIN_SAMPLES = 4
+SWIPE_STEP_EPS = 0.08
+SWIPE_AGREE = 0.55
+PUSH_MIN_MM = 110
+PUSH_MAX_XY_CELLS = 1.6
+PUSH_MIN_SECONDS = 0.12
+PUSH_MAX_SECONDS = 0.55
+COMMAND_DEBOUNCE_SECONDS = 0.55
+
+# Slideshow
+SLIDE_SECONDS = 5.0
+KEN_BURNS_SECONDS = 8.0
+CROSSFADE_SECONDS = 0.85
